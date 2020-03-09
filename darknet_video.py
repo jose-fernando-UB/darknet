@@ -1,3 +1,4 @@
+import pyrealsense2 as rs
 from ctypes import *
 import math
 import random
@@ -44,6 +45,8 @@ def YOLO():
     global metaMain, netMain, altNames
     configPath = "./cfg/yolov3.cfg"
     weightPath = "./yolov3.weights"
+    # configPath = "./cfg/yolov3-tiny.cfg"
+    # weightPath = "./yolov3-tiny.weights"
     metaPath = "./cfg/coco.data"
     if not os.path.exists(configPath):
         raise ValueError("Invalid config path `" +
@@ -80,9 +83,19 @@ def YOLO():
         except Exception:
             pass
     #cap = cv2.VideoCapture(0)
-    cap = cv2.VideoCapture("test.mp4")
-    cap.set(3, 1280)
-    cap.set(4, 720)
+    # cap = cv2.VideoCapture("test.mp4")
+    # cap.set(3, 1280)
+    # cap.set(4, 720)
+    start_time = time.time()
+    pipeline = rs.pipeline()
+    config = rs.config()
+    # config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+    config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+    end_time = time.time()
+    print("camera ready:", end_time- start_time)
+    # Start streaming
+    pipeline.start(config)
+
     out = cv2.VideoWriter(
         "output.avi", cv2.VideoWriter_fourcc(*"MJPG"), 10.0,
         (darknet.network_width(netMain), darknet.network_height(netMain)))
@@ -91,25 +104,47 @@ def YOLO():
     # Create an image we reuse for each detect
     darknet_image = darknet.make_image(darknet.network_width(netMain),
                                     darknet.network_height(netMain),3)
-    while True:
-        prev_time = time.time()
-        ret, frame_read = cap.read()
-        frame_rgb = cv2.cvtColor(frame_read, cv2.COLOR_BGR2RGB)
-        frame_resized = cv2.resize(frame_rgb,
-                                   (darknet.network_width(netMain),
-                                    darknet.network_height(netMain)),
-                                   interpolation=cv2.INTER_LINEAR)
+    i = 0
+    try:
+        while True:
+            prev_time = time.time()
+            # ret, frame_read = cap.read()
+            frames = pipeline.wait_for_frames()
+            color_frame = frames.get_color_frame()
+            frame_rgb = np.asanyarray(color_frame.get_data())
+            frame_rgb = cv2.cvtColor(frame_rgb, cv2.COLOR_BGR2RGB)
+            frame_resized = cv2.resize(frame_rgb,
+                                    (darknet.network_width(netMain),
+                                        darknet.network_height(netMain)),
+                                    interpolation=cv2.INTER_LINEAR)
+            darknet.copy_image_from_bytes(darknet_image,frame_resized.tobytes())
+            #if i%6 == 0:
+            #    detections = darknet.detect_image(netMain, metaMain, darknet_image, thresh=0.15)
+            #for detect in detections:
+            #    print(detect)
 
-        darknet.copy_image_from_bytes(darknet_image,frame_resized.tobytes())
+            detections = darknet.detect_image(netMain, metaMain, darknet_image, thresh=0.15)
+            for detect in detections:
+                print(detect)
 
-        detections = darknet.detect_image(netMain, metaMain, darknet_image, thresh=0.25)
-        image = cvDrawBoxes(detections, frame_resized)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        print(1/(time.time()-prev_time))
-        cv2.imshow('Demo', image)
-        cv2.waitKey(3)
-    cap.release()
-    out.release()
+            image = cvDrawBoxes(detections, frame_resized)
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            print(1/(time.time()-prev_time))
+            cv2.imshow('Demo', image)
+            cv2.waitKey(3)
+            i = i+1
+        cap.release()
+        out.release()
+    finally:
+        pipeline.stop()
+
 
 if __name__ == "__main__":
     YOLO()
+
+"""
+if i%6 == 0:
+    detections = darknet.detect_image(netMain, metaMain, darknet_image, thresh=0.15)
+    for detect in detections:
+        print(detect)
+"""
