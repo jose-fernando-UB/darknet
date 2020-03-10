@@ -48,7 +48,7 @@ EXEC=darknet
 OBJDIR=./obj/
 
 ifeq ($(LIBSO), 1)
-LIBNAMESO=libdarknet.so
+LIBNAMESO=libdark.so
 APPNAMESO=uselib
 endif
 
